@@ -1,0 +1,13 @@
+{
+  "id": "resourceMonitor",
+  "name": "Resource Monitor",
+  "description": "Real-time CPU, memory and swap usage with circular progress indicators",
+  "version": "1.0.0",
+  "author": "youngshine",
+  "icon": "memory",
+  "type": "widget",
+  "component": "./ResourceMonitor.qml",
+  "settings": "./ResourceSettings.qml",
+  "capabilities": ["dankbar-widget"],
+  "permissions": ["process", "settings_read", "settings_write"]
+}
