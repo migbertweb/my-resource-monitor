@@ -1,7 +1,7 @@
 {
-  "id": "resourceMonitor",
-  "name": "Resource Monitor",
-  "description": "Real-time CPU, memory and swap usage with circular progress indicators",
+  "id": "allMonitorsW",
+  "name": "AllMonitorsW",
+  "description": "Real-time CPU, memory and swap usage with toggleable swap visibility",
   "version": "1.0.0",
   "author": "youngshine",
   "icon": "memory",

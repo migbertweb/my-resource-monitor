@@ -5,7 +5,7 @@ import qs.Modules.Plugins
 
 PluginComponent {
     id: root
-    pluginId: "resourceMonitor"
+    pluginId: "allMonitorsW"
 
     readonly property int refreshIntervalSeconds: {
         var value = parseInt(pluginData.refreshInterval, 10)
@@ -24,9 +24,11 @@ PluginComponent {
         "CUR_IDLE=$(awk '/^cpu / {print $5}' /proc/stat); " +
         "CUR_TOTAL=$(awk '/^cpu / {for(i=2;i<=NF;i++) t+=$i; print t}' /proc/stat); " +
         "CPU=$(( (100 * (CUR_TOTAL - CUR_IDLE - PREV_TOTAL + PREV_IDLE)) / (CUR_TOTAL - PREV_TOTAL) )); " +
+        "TEMP=$(awk '{printf \"%d\", $1/1000}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo \"-1\"); " +
         "echo MEM:${MEMS[0]},${MEMS[1]},${MEMS[2]}; " +
         "echo SWP:${SWAPS[0]},${SWAPS[1]},${SWAPS[2]}; " +
-        "echo CPU:${CPU}"]
+        "echo CPU:${CPU}; " +
+        "echo TMP:${TEMP}"]
 
     property bool loadingState: false
     property bool hasData: false
@@ -38,6 +40,13 @@ PluginComponent {
     property double memAvailableKB: 0
     property double swapTotalKB: 0
     property double swapFreeKB: 0
+    property double cpuTemp: -1
+    readonly property int elementSpacing: {
+        var val = parseInt(pluginData.spacing, 10)
+        return (isNaN(val) || val < 0) ? 10 : val
+    }
+    readonly property bool showSwap: pluginData.showSwap !== false
+    readonly property bool showCpuTemp: pluginData.showCpuTemp !== false
 
     function formatKB(kb) {
         return (kb / (1024 * 1024)).toFixed(1) + " GB"
@@ -50,6 +59,10 @@ PluginComponent {
 
     function usageColor(pct) {
         return pct >= 80 ? Theme.error : Theme.primary
+    }
+
+    function tempColor(degrees) {
+        return degrees > 85 ? Theme.tempDanger : (degrees > 63 ? Theme.tempWarning : Theme.primary)
     }
 
     function applySampleOutput(output) {
@@ -78,6 +91,9 @@ PluginComponent {
                 }
             } else if (line.startsWith("CPU:")) {
                 cpuPercent = parseFloat(line.substring(4)) || 0
+                parsedAny = true
+            } else if (line.startsWith("TMP:")) {
+                cpuTemp = parseFloat(line.substring(4)) || -1
                 parsedAny = true
             }
         }
@@ -192,7 +208,7 @@ PluginComponent {
 
     horizontalBarPill: Component {
         Row {
-            spacing: Theme.spacingM
+            spacing: root.elementSpacing
             anchors.verticalCenter: parent.verticalCenter
 
             ResourceRingIcon {
@@ -215,12 +231,14 @@ PluginComponent {
                 value: root.swapPercent
                 ringColor: root.usageColor(root.swapPercent)
                 iconName: "swap_horiz"
-                ringVisible: root.hasData && root.swapTotalKB > 0
+                visible: root.showSwap
+                ringVisible: root.hasData && root.swapTotalKB > 0 && root.showSwap
                 iconOpacity: root.swapTotalKB > 0 ? 0.8 : 0.3
                 anchors.verticalCenter: parent.verticalCenter
             }
 
             StyledText {
+                visible: root.showSwap
                 text: root.hasData && root.swapTotalKB > 0 ? root.formatPercent(root.swapPercent) : "--"
                 color: root.hasData && root.swapTotalKB > 0 ? root.usageColor(root.swapPercent) : Theme.surfaceVariantText
                 font.pixelSize: Theme.fontSizeSmall
@@ -239,6 +257,24 @@ PluginComponent {
             StyledText {
                 text: root.hasData ? root.formatPercent(root.cpuPercent) : "--"
                 color: root.hasData ? root.usageColor(root.cpuPercent) : Theme.surfaceVariantText
+                font.pixelSize: Theme.fontSizeSmall
+                font.weight: Font.Medium
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            ResourceRingIcon {
+                value: root.cpuTemp
+                ringColor: root.tempColor(root.cpuTemp)
+                iconName: "device_thermostat"
+                visible: root.showCpuTemp
+                ringVisible: root.hasData && root.cpuTemp >= 0 && root.showCpuTemp
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            StyledText {
+                visible: root.showCpuTemp
+                text: root.hasData && root.cpuTemp >= 0 ? Math.round(root.cpuTemp) + "°" : "--°"
+                color: root.hasData && root.cpuTemp >= 0 ? root.tempColor(root.cpuTemp) : Theme.surfaceVariantText
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
                 anchors.verticalCenter: parent.verticalCenter
@@ -272,7 +308,7 @@ PluginComponent {
                         spacing: Theme.spacingL
 
                         Column {
-                            width: (parent.width - Theme.spacingL) / 3
+                            width: (parent.width - Theme.spacingL * 3) / 4
                             spacing: Theme.spacingS
 
                             StyledText { text: "RAM"; color: Theme.surfaceText; font.weight: Font.DemiBold; font.pixelSize: Theme.fontSizeMedium }
@@ -282,9 +318,9 @@ PluginComponent {
                         }
 
                         Column {
-                            width: (parent.width - Theme.spacingL) / 3
+                            width: (parent.width - Theme.spacingL * 3) / 4
                             spacing: Theme.spacingS
-                            visible: root.swapTotalKB > 0
+                            visible: root.swapTotalKB > 0 && root.showSwap
 
                             StyledText { text: "Swap"; color: Theme.surfaceText; font.weight: Font.DemiBold; font.pixelSize: Theme.fontSizeMedium }
                             StyledText { text: "Used: " + root.formatKB(root.swapTotalKB - root.swapFreeKB); color: root.usageColor(root.swapPercent); font.pixelSize: Theme.fontSizeSmall }
@@ -293,11 +329,20 @@ PluginComponent {
                         }
 
                         Column {
-                            width: (parent.width - Theme.spacingL) / 3
+                            width: (parent.width - Theme.spacingL * 3) / 4
                             spacing: Theme.spacingS
 
                             StyledText { text: "CPU"; color: Theme.surfaceText; font.weight: Font.DemiBold; font.pixelSize: Theme.fontSizeMedium }
                             StyledText { text: "Load: " + Math.round(root.cpuPercent) + "%"; color: root.usageColor(root.cpuPercent); font.pixelSize: Theme.fontSizeSmall }
+                        }
+
+                        Column {
+                            width: (parent.width - Theme.spacingL * 3) / 4
+                            spacing: Theme.spacingS
+                            visible: root.cpuTemp >= 0 && root.showCpuTemp
+
+                            StyledText { text: "Temp"; color: Theme.surfaceText; font.weight: Font.DemiBold; font.pixelSize: Theme.fontSizeMedium }
+                            StyledText { text: Math.round(root.cpuTemp) + "°C"; color: root.tempColor(root.cpuTemp); font.pixelSize: Theme.fontSizeSmall }
                         }
                     }
 
